@@ -1,0 +1,11 @@
+---
+import BaseLayout from '@layouts/BaseLayout.astro';
+import ChronosDashboard from '@components/chronos/ChronosDashboard.svelte';
+---
+
+<BaseLayout
+  title="Chronos — Temporal Matrix"
+  description="A dense, real-time matrix for observing 100,000 browser timers."
+>
+  <ChronosDashboard client:load />
+</BaseLayout>

@@ -1,0 +1,59 @@
+---
+import ChronosHeader from '@components/site/ChronosHeader.svelte';
+import { ClientRouter } from 'astro:transitions';
+import { createThemeScript } from '@weluvabid/iris/theme';
+import '@styles/global.css';
+import faviconUrl from '../../brand/me/favicon/favicon.svg?url';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = 'Chronos — Temporal Matrix',
+  description = 'A dense, real-time matrix for observing 100,000 browser timers.',
+} = Astro.props;
+
+const themeBootstrap = createThemeScript();
+---
+
+<!doctype html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#fafaf8" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" type="image/svg+xml" href={faviconUrl} />
+    <meta property="og:site_name" content="Chronos" />
+    <meta name="twitter:card" content="summary" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <title>{title}</title>
+    <script is:inline set:html={themeBootstrap} />
+    <ClientRouter />
+  </head>
+  <body class="h-dvh overflow-hidden">
+    <a
+      href="#main-content"
+      class="fixed left-4 top-4 z-[110] -translate-y-[calc(100%+1rem)] rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-transform focus:translate-y-0 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring motion-reduce:transition-none"
+    >
+      Skip to content
+    </a>
+    <div class="mx-auto flex h-dvh w-full max-w-6xl flex-col overflow-hidden px-4 sm:px-6">
+      <div class="sticky top-0 z-40 -mx-4 bg-background/95 px-4 backdrop-blur sm:-mx-6 sm:px-6">
+        <ChronosHeader client:load />
+      </div>
+      <main
+        id="main-content"
+        tabindex="-1"
+        class="flex min-h-0 flex-1 flex-col overflow-hidden scroll-mt-28 pt-4 pb-0 sm:pt-6"
+      >
+        <slot />
+      </main>
+    </div>
+  </body>
+</html>
