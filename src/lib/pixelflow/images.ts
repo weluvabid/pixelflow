@@ -18,11 +18,13 @@ export interface PhotoRecord {
 
 export function optimizedImageUrl(source: string): string {
   const url = new URL(source);
+
   url.searchParams.set('w', '480');
   url.searchParams.set('h', '480');
   url.searchParams.set('fit', 'crop');
   url.searchParams.set('crop', 'entropy');
   url.searchParams.set('auto', 'format');
   url.searchParams.set('q', '78');
+
   return url.toString();
 }

@@ -3,7 +3,9 @@ import test from 'node:test';
 import { optimizedImageUrl } from '../../src/lib/pixelflow/images.ts';
 
 test('optimized image URLs preserve the source and apply bounded delivery parameters', () => {
-  const result = new URL(optimizedImageUrl('https://images.unsplash.com/photo-example?ixlib=rb-4.0.3'));
+  const result = new URL(
+    optimizedImageUrl('https://images.unsplash.com/photo-example?ixlib=rb-4.0.3'),
+  );
 
   assert.equal(result.origin, 'https://images.unsplash.com');
   assert.equal(result.pathname, '/photo-example');

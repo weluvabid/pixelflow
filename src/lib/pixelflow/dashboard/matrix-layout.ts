@@ -3,7 +3,13 @@ export function getMatrixColumns(viewportWidth: number): number {
     throw new RangeError('Viewport width must be a finite positive number.');
   }
 
-  if (viewportWidth >= 900) return 4;
-  if (viewportWidth >= 600) return 2;
+  if (viewportWidth >= 900) {
+    return 4;
+  }
+
+  if (viewportWidth >= 600) {
+    return 2;
+  }
+
   return 1;
 }

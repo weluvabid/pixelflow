@@ -6,9 +6,12 @@ import test from 'node:test';
 const datasetDirectory = join(process.cwd(), 'public', 'dataset');
 
 test('published dataset metadata matches its chunk files and record count', async () => {
-  const metadata = JSON.parse(
-    await readFile(join(datasetDirectory, 'dataset.json'), 'utf8'),
-  ) as { version: number; total: number; chunkSize: number; chunkCount: number };
+  const metadata = JSON.parse(await readFile(join(datasetDirectory, 'dataset.json'), 'utf8')) as {
+    version: number;
+    total: number;
+    chunkSize: number;
+    chunkCount: number;
+  };
 
   assert.equal(metadata.version, 1);
   assert.equal(metadata.chunkSize, 500);
@@ -20,9 +23,13 @@ test('published dataset metadata matches its chunk files and record count', asyn
 
   for (let index = 0; index < metadata.chunkCount; index += 1) {
     const filename = `chunk-${String(index).padStart(3, '0')}.json`;
-    const records = JSON.parse(
-      await readFile(join(datasetDirectory, filename), 'utf8'),
-    ) as { id: string; imageUrl: string; width: number; height: number; photographer: string }[];
+    const records = JSON.parse(await readFile(join(datasetDirectory, filename), 'utf8')) as {
+      id: string;
+      imageUrl: string;
+      width: number;
+      height: number;
+      photographer: string;
+    }[];
 
     const expectedLength = Math.min(
       metadata.chunkSize,

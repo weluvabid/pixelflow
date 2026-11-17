@@ -23,18 +23,40 @@ const REQUIRED_COLUMNS = [
   'blur_hash',
 ];
 
+/**
+ * @param {unknown} value
+ * @returns {number | null}
+ */
 function positiveInteger(value) {
-  if (typeof value !== 'string' || value.trim() === '') return null;
+  if (typeof value !== 'string' || value.trim() === '') {
+    return null;
+  }
+
   const number = Number(value);
+
   return Number.isSafeInteger(number) && number > 0 ? number : null;
 }
 
+/**
+ * @param {unknown} value
+ * @param {string} field
+ * @param {number} rowNumber
+ * @param {{ required?: boolean }} [options]
+ * @returns {string}
+ */
 function httpsUrl(value, field, rowNumber, { required = false } = {}) {
-  const input = value?.trim() ?? '';
-  if (!input && !required) return '';
-  if (!input) throw new Error(`Row ${rowNumber}: missing ${field}`);
+  const input = typeof value === 'string' ? value.trim() : '';
+
+  if (!input && !required) {
+    return '';
+  }
+
+  if (!input) {
+    throw new Error(`Row ${rowNumber}: missing ${field}`);
+  }
 
   let url;
+
   try {
     url = new URL(input);
   } catch {
@@ -48,8 +70,14 @@ function httpsUrl(value, field, rowNumber, { required = false } = {}) {
   return url.toString();
 }
 
+/**
+ * @param {import('node:stream').Writable} stream
+ * @param {string} line
+ */
 async function writeLine(stream, line) {
-  if (!stream.write(line)) await once(stream, 'drain');
+  if (!stream.write(line)) {
+    await once(stream, 'drain');
+  }
 }
 
 async function main() {
@@ -57,13 +85,15 @@ async function main() {
   await rm(temporaryPath, { force: true });
 
   const input = createReadStream(inputPath);
-  const parser = input.pipe(parse({
-    bom: true,
-    columns: true,
-    delimiter: '\t',
-    skip_empty_lines: true,
-    relax_column_count: false,
-  }));
+  const parser = input.pipe(
+    parse({
+      bom: true,
+      columns: true,
+      delimiter: '\t',
+      skip_empty_lines: true,
+      relax_column_count: false,
+    }),
+  );
 
   const output = createWriteStream(temporaryPath, {
     encoding: 'utf8',
@@ -82,12 +112,12 @@ async function main() {
       rowNumber += 1;
 
       if (!checkedHeader) {
-        const missing = REQUIRED_COLUMNS.filter(
-          (column) => !Object.hasOwn(row, column),
-        );
+        const missing = REQUIRED_COLUMNS.filter((column) => !Object.hasOwn(row, column));
+
         if (missing.length) {
           throw new Error(`Missing TSV columns: ${missing.join(', ')}`);
         }
+
         checkedHeader = true;
       }
 
@@ -97,11 +127,13 @@ async function main() {
 
       if (!id || !width || !height || !row.photo_image_url?.trim()) {
         skipped += 1;
+
         continue;
       }
 
       if (seenIds.has(id)) {
         duplicates += 1;
+
         continue;
       }
 
@@ -124,6 +156,7 @@ async function main() {
 
       await writeLine(output, `${JSON.stringify(record)}\n`);
       seenIds.add(id);
+
       written += 1;
 
       if (written % 5000 === 0) {
@@ -131,7 +164,9 @@ async function main() {
       }
     }
 
-    if (!checkedHeader) throw new Error('Input TSV is empty or has no header.');
+    if (!checkedHeader) {
+      throw new Error('Input TSV is empty or has no header.');
+    }
 
     output.end();
     await once(output, 'finish');
@@ -151,5 +186,6 @@ async function main() {
 
 main().catch((error) => {
   process.stderr.write(`Dataset preparation failed: ${error.message}\n`);
+
   process.exitCode = 1;
 });
