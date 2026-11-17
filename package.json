@@ -20,7 +20,8 @@
     "test": "node --experimental-strip-types --test",
     "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build",
     "hooks:install": "sh ./scripts/install-hooks.sh",
-    "benchmark": "node --experimental-strip-types scripts/benchmark-chronos.mjs"
+    "benchmark": "node --experimental-strip-types scripts/benchmark-chronos.mjs",
+    "dataset:build": "node scripts/build-image-dataset.mjs"
   },
   "dependencies": {
     "@weluvabid/iris": "0.4.1",

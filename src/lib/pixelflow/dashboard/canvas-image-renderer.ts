@@ -1,5 +1,5 @@
 import { ImageCache } from './image-cache.ts';
-import { IMAGE_ROW_HEIGHT, IMAGE_TILE_SIZE } from '../images.ts';
+import { IMAGE_ROW_HEIGHT, IMAGE_TILE_SIZE, type PhotoRecord } from '../images.ts';
 
 const MAX_DPR = 2;
 const INSET = 12;
@@ -10,7 +10,7 @@ export interface CanvasImageRendererOptions {
   readonly getScroller: () => HTMLElement | null;
   readonly getScrollTop: () => number;
   readonly getViewportHeight: () => number;
-  readonly getAssetIds: () => Uint16Array;
+  readonly getRecords: () => readonly PhotoRecord[];
   readonly getWindowOffset: () => number;
   readonly getTotal: () => number;
   readonly getColumns: () => number;
@@ -66,7 +66,7 @@ export class CanvasImageRenderer {
     const firstRow = Math.max(0, Math.floor(scrollTop / IMAGE_ROW_HEIGHT) - 3);
     const lastRow = Math.min(Math.ceil(total / columns) - 1, Math.ceil((scrollTop + height) / IMAGE_ROW_HEIGHT) + 2);
     const cardWidth = (width - INSET * 2 - GAP * (columns - 1)) / columns;
-    const assetIds = this.#options.getAssetIds();
+    const records = this.#options.getRecords();
     const offset = this.#options.getWindowOffset();
     let visibleImages = 0;
 
@@ -75,20 +75,46 @@ export class CanvasImageRenderer {
         const index = row * columns + column;
         if (index >= total) break;
         const localIndex = index - offset;
-        if (localIndex < 0 || localIndex >= assetIds.length) continue;
-        const assetId = assetIds[localIndex];
+        if (localIndex < 0 || localIndex >= records.length) continue;
+        const record = records[localIndex];
+        if (!record) throw new Error(`Missing image record at viewport index ${index}.`);
         const x = INSET + column * (cardWidth + GAP);
         const y = row * IMAGE_ROW_HEIGHT - scrollTop + (IMAGE_ROW_HEIGHT - IMAGE_TILE_SIZE) / 2;
-        const bitmap = this.#cache.get(assetId);
+        const bitmap = this.#cache.get(record.id);
         context.fillStyle = styles.getPropertyValue('--color-muted').trim() || '#eee';
         context.fillRect(x, y, cardWidth, IMAGE_TILE_SIZE);
         if (bitmap) {
           context.save();
           context.beginPath(); context.roundRect(x, y, cardWidth, IMAGE_TILE_SIZE, 8); context.clip();
-          context.drawImage(bitmap, x, y, cardWidth, IMAGE_TILE_SIZE);
+          const sourceRatio = bitmap.width / bitmap.height;
+          const targetRatio = cardWidth / IMAGE_TILE_SIZE;
+          let sourceX = 0;
+          let sourceY = 0;
+          let sourceWidth = bitmap.width;
+          let sourceHeight = bitmap.height;
+
+          if (sourceRatio > targetRatio) {
+            sourceWidth = bitmap.height * targetRatio;
+            sourceX = (bitmap.width - sourceWidth) / 2;
+          } else if (sourceRatio < targetRatio) {
+            sourceHeight = bitmap.width / targetRatio;
+            sourceY = (bitmap.height - sourceHeight) / 2;
+          }
+
+          context.drawImage(
+            bitmap,
+            sourceX,
+            sourceY,
+            sourceWidth,
+            sourceHeight,
+            x,
+            y,
+            cardWidth,
+            IMAGE_TILE_SIZE,
+          );
           context.restore();
         } else {
-          this.#cache.request(assetId);
+          this.#cache.request(record);
         }
         visibleImages += 1;
       }

@@ -5,7 +5,7 @@
   import { ImageWorkerClient } from '@lib/pixelflow/worker/client.ts';
   import { CanvasImageRenderer } from '@lib/pixelflow/dashboard/canvas-image-renderer.ts';
   import { VisibleWindowController } from '@lib/chronos/dashboard/visible-window.ts';
-  import { IMAGE_COLUMNS, IMAGE_OVERSCAN_ROWS, IMAGE_ROW_HEIGHT } from '@lib/pixelflow/images.ts';
+  import { IMAGE_COLUMNS, IMAGE_OVERSCAN_ROWS, IMAGE_ROW_HEIGHT, type PhotoRecord } from '@lib/pixelflow/images.ts';
   import { getMatrixColumns } from '@lib/chronos/dashboard/matrix-model.ts';
 
   let scrollElement: HTMLElement | null = $state(null);
@@ -13,7 +13,7 @@
   let canvasElement: HTMLCanvasElement | null = $state(null);
   let total = $state(0);
   let columns = $state(IMAGE_COLUMNS);
-  let assetIds = $state(new Uint16Array());
+  let records = $state<readonly PhotoRecord[]>([]);
   let windowOffset = $state(0);
   let status = $state<'initializing' | 'ready' | 'error'>('initializing');
   let errorMessage = $state('');
@@ -23,7 +23,8 @@
   let fps = $state(0);
   let frameSamples = $state<number[]>([]);
   let renderer: CanvasImageRenderer | null = null;
-  let controller: VisibleWindowController<number> | null = null;
+  let initialized = false;
+  let controller: VisibleWindowController<PhotoRecord> | null = null;
 
   function getRange() {
     const viewportHeight = Math.max(1, scrollElement?.clientHeight ?? 1);
@@ -34,13 +35,13 @@
     return { first: firstRow * columns, last: Math.max(firstRow * columns, Math.min(total - 1, (lastRow + 1) * columns - 1)) };
   }
 
-  function requestWindow(force = false): Promise<void> { return controller?.request(force) ?? Promise.resolve(); }
+  function requestWindow(force = false): Promise<void> { return initialized ? (controller?.request(force) ?? Promise.resolve()) : Promise.resolve(); }
   function draw(): void { renderer?.schedule(); }
   function handleScroll(): void { void requestWindow(); draw(); }
   function handleResize(): void { void requestWindow(true); draw(); }
 
   onMount(() => {
-    const worker = new ImageWorkerClient();
+    const worker = new ImageWorkerClient(new URL(`${import.meta.env.BASE_URL}dataset/`, window.location.href).toString());
     let disposed = false;
     let lastMetrics = 0;
     let lastHistory = 0;
@@ -49,7 +50,7 @@
       getScroller: () => scrollElement,
       getScrollTop: () => scrollElement?.scrollTop ?? 0,
       getViewportHeight: () => scrollElement?.clientHeight ?? 1,
-      getAssetIds: () => assetIds,
+      getRecords: () => records,
       getWindowOffset: () => windowOffset,
       getTotal: () => total,
       getColumns: () => columns,
@@ -60,17 +61,17 @@
         if (window.innerWidth >= 768 && now - lastHistory >= 500) { frameSamples = [...frameSamples.slice(-47), metrics.renderMs]; lastHistory = now; }
       },
     });
-    controller = new VisibleWindowController<number>({
+    controller = new VisibleWindowController<PhotoRecord>({
       query: async (offset, limit) => {
         const started = performance.now();
         const page = await worker.query(offset, limit);
         workerMs = performance.now() - started;
-        return { offset: page.offset, total: page.total, records: Array.from(page.assetIds) };
+        return { offset: page.offset, total: page.total, records: page.records };
       },
       getRange,
-      hasCachedRange: ({ first, last }) => first >= windowOffset && last < windowOffset + assetIds.length,
+      hasCachedRange: ({ first, last }) => first >= windowOffset && last < windowOffset + records.length,
       getExpectedTotal: () => total || null,
-      onPage: (page) => { assetIds = Uint16Array.from(page.records); windowOffset = page.offset; draw(); },
+      onPage: (page) => { records = page.records; windowOffset = page.offset; draw(); },
       onError: (error) => { errorMessage = error instanceof Error ? error.message : 'Unable to retrieve image records.'; status = 'error'; },
     });
 
@@ -96,6 +97,7 @@
     void worker.ready.then(async (summary) => {
       if (disposed) return;
       total = summary.total;
+      initialized = true;
       status = 'ready';
       await requestWindow(true);
       draw();
@@ -122,7 +124,7 @@
   <div class="flex shrink-0 items-center justify-between gap-3">
     <div>
       <p class="text-xs font-semibold uppercase tracking-[0.18em]">Image matrix {#if total > 0}[{columns} columns]{/if}</p>
-      <p class="mt-1 text-xs text-muted-foreground">{total.toLocaleString()} image records · {3} source photographs · Canvas 2D</p>
+      <p class="mt-1 text-xs text-muted-foreground">{total.toLocaleString()} photographs · Canvas 2D</p>
     </div>
   </div>
   <ScrollArea.Root bind:viewportRef={scrollElement} orientation="vertical" class="relative min-h-[180px] min-w-0 flex-1" aria-label="Photograph collection">

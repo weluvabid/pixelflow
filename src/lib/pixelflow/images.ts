@@ -1,18 +1,26 @@
-export const IMAGE_SOURCES = [
-  'https://images.unsplash.com/photo-1416138782774-a2149bc6d102',
-  'https://images.unsplash.com/28/tree-sky.jpg',
-  'https://images.unsplash.com/photo-1418833309618-f98e69067c54',
-] as const;
-
-export const IMAGE_COUNT = 5_000;
 export const IMAGE_TILE_SIZE = 164;
 export const IMAGE_ROW_HEIGHT = 180;
 export const IMAGE_COLUMNS = 4;
 export const IMAGE_OVERSCAN_ROWS = 3;
+export const IMAGE_CACHE_SIZE = 48;
+export const IMAGE_LOAD_CONCURRENCY = 4;
+export const IMAGE_QUEUE_LIMIT = IMAGE_CACHE_SIZE * 4;
 
-export function imageUrl(assetId: number): string {
-  if (!Number.isSafeInteger(assetId) || assetId < 0 || assetId >= IMAGE_SOURCES.length) throw new RangeError(`Unknown image asset: ${assetId}.`);
-  const url = new URL(IMAGE_SOURCES[assetId]);
-  url.searchParams.set('w', '400'); url.searchParams.set('h', '400'); url.searchParams.set('fit', 'crop'); url.searchParams.set('crop', 'entropy'); url.searchParams.set('auto', 'format'); url.searchParams.set('q', '75');
+export interface PhotoRecord {
+  readonly id: string;
+  readonly imageUrl: string;
+  readonly width: number;
+  readonly height: number;
+  readonly photographer: string;
+}
+
+export function optimizedImageUrl(source: string): string {
+  const url = new URL(source);
+  url.searchParams.set('w', '480');
+  url.searchParams.set('h', '480');
+  url.searchParams.set('fit', 'crop');
+  url.searchParams.set('crop', 'entropy');
+  url.searchParams.set('auto', 'format');
+  url.searchParams.set('q', '78');
   return url.toString();
 }

@@ -33,3 +33,6 @@ out/
 
 # Astro generated types and cache
 .astro/
+
+# Local source dataset (generated public/dataset is intentionally tracked)
+data/unsplash/
