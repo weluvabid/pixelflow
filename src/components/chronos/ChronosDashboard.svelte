@@ -85,6 +85,7 @@
 
   function requestWindow(force = false): Promise<void> { return initialized ? (controller?.request(force) ?? Promise.resolve()) : Promise.resolve(); }
   function draw(): void { renderer?.schedule(); }
+  function handleThemeChange(): void { draw(); }
   function handleScroll(): void { void requestWindow(); draw(); scheduleAccessibleRecords(); }
   function handleResize(): void { void requestWindow(true); draw(); scheduleAccessibleRecords(); }
 
@@ -145,6 +146,7 @@
     }
     if (spacerElement) resizeObserver.observe(spacerElement);
     window.addEventListener('resize', handleResize, { passive: true });
+    document.addEventListener('chronos:themechange', handleThemeChange);
 
     void worker.ready.then(async (summary) => {
       if (disposed) return;
@@ -170,6 +172,7 @@
       scrollElement?.removeEventListener('scroll', handleScroll);
       scrollElement?.classList.remove('pixelflow-scroll-viewport');
       window.removeEventListener('resize', handleResize);
+      document.removeEventListener('chronos:themechange', handleThemeChange);
       renderer?.destroy(); controller?.close(); worker.close();
       renderer = null; controller = null;
     };
@@ -184,7 +187,7 @@
       <p class="mt-1 text-xs text-muted-foreground">{total.toLocaleString()} photographs · Canvas 2D</p>
     </div>
   </div>
-  <ScrollArea.Root bind:viewportRef={scrollElement} orientation="vertical" class="relative min-h-[180px] min-w-0 flex-1" aria-label="Photograph collection">
+  <ScrollArea.Root bind:viewportRef={scrollElement} orientation="vertical" class="relative min-h-[180px] min-w-0 flex-1">
     {#if total === 0}
       <div class="grid min-h-72 w-full place-items-center px-4 text-center text-sm text-muted-foreground">{status === 'initializing' ? 'Loading image collection…' : 'Waiting for image worker…'}</div>
     {:else}
