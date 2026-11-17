@@ -65,10 +65,10 @@
                 variant="ghost"
                 size="icon"
                 class="rounded-full"
-                href="https://github.com/weluvabid/chronos"
+                href="https://github.com/weluvabid/pixelflow"
                 target="_blank"
                 rel="noopener noreferrer"
-                aria-label="Chronos on GitHub (opens in a new tab)"
+                aria-label="Pixelflow on GitHub (opens in a new tab)"
               >
                 <SiGithub aria-hidden="true" />
               </Button.Root>

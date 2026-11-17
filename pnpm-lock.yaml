@@ -134,6 +134,9 @@ importers:
       astro:
         specifier: 7.4.5
         version: 7.4.5(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.1)
+      csv-parse:
+        specifier: ^7.0.3
+        version: 7.0.3
       eslint:
         specifier: 9.39.0
         version: 9.39.0(jiti@2.7.0)(supports-color@7.2.0)
@@ -1429,6 +1432,9 @@ packages:
   csso@5.0.5:
     resolution: {integrity: sha512-0LrrStPOdJj+SPCCrGhzryycLjwcgUSHBtxNA8aIDxf0GLsRh1cKYhB00Gd1lDOS4yGH69+SNn13+TWbVHETFQ==}
     engines: {node: ^10 || ^12.20.0 || ^14.13.0 || >=15.0.0, npm: '>=7.0.0'}
+
+  csv-parse@7.0.3:
+    resolution: {integrity: sha512-YFd3QM/yo17vH91L1IOZuvl09zM0zEEtdfTcOCKWcMdM++MNaQSyp09slXyFCLaPXvHstQFx/xC8myiFHSMUvw==}
 
   d3-array@2.12.1:
     resolution: {integrity: sha512-B0ErZK/66mHtEsR1TkPEEkwdy+WDesimkM5gpZr5Dsg54BiTA5RXtYW5qTLIAcekaS9xfZrzBLF/OAkB3Qn1YQ==}
@@ -4545,6 +4551,8 @@ snapshots:
   csso@5.0.5:
     dependencies:
       css-tree: 2.2.1
+
+  csv-parse@7.0.3: {}
 
   d3-array@2.12.1:
     dependencies:

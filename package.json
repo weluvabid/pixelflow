@@ -1,5 +1,5 @@
 {
-  "name": "chronos",
+  "name": "pixelflow",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -33,6 +33,7 @@
     "@tailwindcss/vite": "4.3.3",
     "@types/node": "^26.6.6",
     "astro": "7.4.5",
+    "csv-parse": "^7.0.3",
     "eslint": "9.39.0",
     "eslint-config-prettier": "10.1.8",
     "eslint-plugin-svelte": "^3.24.1",

@@ -5,13 +5,13 @@
     fps,
     renderMs,
     workerMs,
-    visibleTimers,
+    visibleImages,
     frameSamples,
   }: {
     fps: number;
     renderMs: number;
     workerMs: number;
-    visibleTimers: number;
+    visibleImages: number;
     frameSamples: readonly number[];
   } = $props();
 
@@ -59,9 +59,9 @@
       </div>
       <div class="min-w-0">
         <p class="text-[9px] uppercase tracking-wider text-muted-foreground sm:text-[10px]">
-          Visible timers
+          Visible images
         </p>
-        <p class="mt-0.5 font-mono text-lg tabular-nums sm:mt-1 sm:text-xl">{visibleTimers}</p>
+        <p class="mt-0.5 font-mono text-lg tabular-nums sm:mt-1 sm:text-xl">{visibleImages}</p>
       </div>
     </div>
     <div class="mt-3 hidden border-t border-border pt-3 md:block">
