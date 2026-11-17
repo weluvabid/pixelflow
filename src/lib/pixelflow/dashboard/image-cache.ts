@@ -1,19 +1,38 @@
 import {
   IMAGE_CACHE_SIZE,
-  IMAGE_LOAD_CONCURRENCY,
-  IMAGE_QUEUE_LIMIT,
+  IMAGE_DECODE_CONCURRENCY,
+  IMAGE_FETCH_CONCURRENCY,
+  IMAGE_OVERSCAN_DELAY_MS,
   optimizedImageUrl,
   type PhotoRecord,
 } from '../images.ts';
 
+interface QueuedImage {
+  readonly record: PhotoRecord;
+  readonly priority: 0 | 1;
+}
+
+interface DecodeTask {
+  readonly record: PhotoRecord;
+  readonly blob: Blob;
+  readonly controller: AbortController;
+}
+
 export class ImageCache {
   readonly #bitmaps = new Map<string, ImageBitmap>();
-  readonly #inFlight = new Set<string>();
-  readonly #queue: PhotoRecord[] = [];
-  readonly #queued = new Set<string>();
+  readonly #requests = new Map<string, AbortController>();
+  readonly #queued = new Map<string, QueuedImage>();
+  readonly #decodeQueue: DecodeTask[] = [];
+  readonly #decoding = new Set<string>();
   readonly #failed = new Set<string>();
-  #active = 0;
+  #activeFetches = 0;
+  #activeDecodes = 0;
   #destroyed = false;
+  #overscanTimer: ReturnType<typeof setTimeout> | undefined;
+  #viewportKey = '';
+  #desiredIds = new Set<string>();
+  #visibleIds = new Set<string>();
+  #overscanRecords: readonly PhotoRecord[] = [];
   readonly #onChange: () => void;
   readonly #onError: (error: Error) => void;
 
@@ -31,71 +50,172 @@ export class ImageCache {
     return bitmap;
   }
 
-  request(record: PhotoRecord): void {
-    const { id } = record;
-    if (
-      this.#destroyed || this.#bitmaps.has(id) || this.#failed.has(id) ||
-      this.#inFlight.has(id) || this.#queued.has(id)
-    ) return;
+  /**
+   * Replace the desired image set for the current viewport. Visible images are
+   * fetched immediately; overscan is scheduled only after scrolling settles.
+   */
+  updateViewport(
+    visibleRecords: readonly PhotoRecord[],
+    overscanRecords: readonly PhotoRecord[],
+  ): void {
+    if (this.#destroyed) return;
 
-    // A fast fling can move the viewport faster than images decode. Keep
-    // queued work bounded and let a later visible frame enqueue dropped items.
-    if (this.#queue.length >= IMAGE_QUEUE_LIMIT) {
-      const stale = this.#queue.shift();
-      if (stale) this.#queued.delete(stale.id);
+    const visibleIds = new Set(visibleRecords.map(({ id }) => id));
+    const viewportKey = [...visibleIds].join('\u0000');
+    const viewportChanged = viewportKey !== this.#viewportKey;
+
+    this.#overscanRecords = overscanRecords;
+    this.#visibleIds = visibleIds;
+
+    if (viewportChanged) {
+      this.#desiredIds = new Set(visibleIds);
+
+      // Requests outside the new viewport no longer consume network slots.
+      for (const [id, controller] of this.#requests) {
+        if (!visibleIds.has(id)) controller.abort();
+      }
+
+      // Remove stale queued work and blobs waiting for decode.
+      for (const id of this.#queued.keys()) {
+        if (!visibleIds.has(id)) this.#queued.delete(id);
+      }
+      for (let index = this.#decodeQueue.length - 1; index >= 0; index -= 1) {
+        const task = this.#decodeQueue[index];
+        if (task && !visibleIds.has(task.record.id)) {
+          task.controller.abort();
+          this.#decoding.delete(task.record.id);
+          this.#decodeQueue.splice(index, 1);
+        }
+      }
     }
-    this.#queue.push(record);
-    this.#queued.add(id);
-    this.#drain();
+
+    for (const record of visibleRecords) {
+      this.#desiredIds.add(record.id);
+      this.#enqueue(record, 0);
+    }
+    this.#drainFetches();
+
+    if (viewportChanged) {
+      if (this.#overscanTimer) clearTimeout(this.#overscanTimer);
+      this.#overscanTimer = setTimeout(() => {
+        this.#overscanTimer = undefined;
+        if (this.#destroyed) return;
+        for (const record of this.#overscanRecords) {
+          if (!this.#desiredIds.has(record.id)) { this.#desiredIds.add(record.id); this.#enqueue(record, 1); }
+        }
+        this.#drainFetches();
+      }, IMAGE_OVERSCAN_DELAY_MS);
+      this.#viewportKey = viewportKey;
+    }
   }
 
   destroy(): void {
     this.#destroyed = true;
-    this.#queue.length = 0;
+    if (this.#overscanTimer) clearTimeout(this.#overscanTimer);
+    this.#overscanTimer = undefined;
+    for (const controller of this.#requests.values()) controller.abort();
+    this.#requests.clear();
     this.#queued.clear();
+    for (const task of this.#decodeQueue) task.controller.abort();
+    this.#decodeQueue.length = 0;
+    this.#decoding.clear();
     for (const bitmap of this.#bitmaps.values()) bitmap.close();
     this.#bitmaps.clear();
   }
 
-  #drain(): void {
-    while (!this.#destroyed && this.#active < IMAGE_LOAD_CONCURRENCY && this.#queue.length) {
-      const record = this.#queue.shift();
-      if (!record) throw new Error('Image loading queue became inconsistent.');
-      this.#queued.delete(record.id);
-      this.#active += 1;
-      this.#inFlight.add(record.id);
-      void this.#load(record).finally(() => {
-        this.#active -= 1;
-        this.#inFlight.delete(record.id);
-        this.#drain();
+  #enqueue(record: PhotoRecord, priority: 0 | 1): void {
+    if (
+      this.#destroyed || this.#bitmaps.has(record.id) || this.#failed.has(record.id) ||
+      this.#requests.has(record.id) || this.#decoding.has(record.id)
+    ) return;
+
+    const existing = this.#queued.get(record.id);
+    if (!existing || priority < existing.priority) {
+      this.#queued.set(record.id, { record, priority });
+    }
+  }
+
+  #drainFetches(): void {
+    while (!this.#destroyed && this.#activeFetches < IMAGE_FETCH_CONCURRENCY && this.#queued.size > 0) {
+      const next = [...this.#queued.values()]
+        .sort((a, b) => a.priority - b.priority)[0];
+      if (!next) throw new Error('Image request queue became inconsistent.');
+
+      this.#queued.delete(next.record.id);
+      const controller = new AbortController();
+      this.#requests.set(next.record.id, controller);
+      this.#activeFetches += 1;
+      void this.#fetch(next.record, controller).finally(() => {
+        this.#activeFetches -= 1;
+        if (this.#requests.get(next.record.id) === controller) {
+          this.#requests.delete(next.record.id);
+        }
+        if (
+          this.#desiredIds.has(next.record.id) &&
+          !this.#bitmaps.has(next.record.id) &&
+          !this.#failed.has(next.record.id)
+        ) {
+          this.#enqueue(next.record, this.#visibleIds.has(next.record.id) ? 0 : 1);
+        }
+        this.#drainFetches();
       });
     }
   }
 
-  async #load(record: PhotoRecord): Promise<void> {
+  async #fetch(record: PhotoRecord, controller: AbortController): Promise<void> {
     try {
       const response = await fetch(optimizedImageUrl(record.imageUrl), {
         mode: 'cors',
         credentials: 'omit',
+        signal: controller.signal,
       });
       if (!response.ok) throw new Error(`Image ${record.id} failed: HTTP ${response.status}.`);
-      const bitmap = await createImageBitmap(await response.blob());
-      if (this.#destroyed) {
-        bitmap.close();
+      const blob = await response.blob();
+      if (controller.signal.aborted || this.#destroyed || !this.#desiredIds.has(record.id)) return;
+
+      this.#decodeQueue.push({ record, blob, controller });
+      this.#decoding.add(record.id);
+      this.#drainDecodes();
+    } catch (error) {
+      if (controller.signal.aborted || this.#destroyed || (error instanceof DOMException && error.name === 'AbortError')) {
         return;
       }
-
-      this.#bitmaps.set(record.id, bitmap);
-      while (this.#bitmaps.size > IMAGE_CACHE_SIZE) {
-        const oldest = this.#bitmaps.keys().next().value;
-        if (oldest === undefined) break;
-        this.#bitmaps.get(oldest)?.close();
-        this.#bitmaps.delete(oldest);
-      }
-      this.#onChange();
-    } catch (error) {
       this.#failed.add(record.id);
       this.#onError(error instanceof Error ? error : new Error(`Image ${record.id} failed to load.`));
+    }
+  }
+
+  #drainDecodes(): void {
+    while (!this.#destroyed && this.#activeDecodes < IMAGE_DECODE_CONCURRENCY && this.#decodeQueue.length > 0) {
+      const task = this.#decodeQueue.shift();
+      if (!task) throw new Error('Image decode queue became inconsistent.');
+      this.#activeDecodes += 1;
+      void createImageBitmap(task.blob).then((bitmap) => {
+        if (
+          this.#destroyed || task.controller.signal.aborted ||
+          !this.#desiredIds.has(task.record.id)
+        ) {
+          bitmap.close();
+          return;
+        }
+
+        this.#bitmaps.set(task.record.id, bitmap);
+        while (this.#bitmaps.size > IMAGE_CACHE_SIZE) {
+          const oldest = this.#bitmaps.keys().next().value;
+          if (oldest === undefined) break;
+          this.#bitmaps.get(oldest)?.close();
+          this.#bitmaps.delete(oldest);
+        }
+        this.#onChange();
+      }).catch((error: unknown) => {
+        if (task.controller.signal.aborted || this.#destroyed) return;
+        this.#failed.add(task.record.id);
+        this.#onError(error instanceof Error ? error : new Error(`Image ${task.record.id} failed to decode.`));
+      }).finally(() => {
+        this.#decoding.delete(task.record.id);
+        this.#activeDecodes -= 1;
+        this.#drainDecodes();
+      });
     }
   }
 }

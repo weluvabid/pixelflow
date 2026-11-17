@@ -12,6 +12,6 @@ export default defineConfig({
   },
   server: {
     host: true,
-    allowedHosts: ['protection-scanned-reviews-fioricet.trycloudflare.com'],
+    allowedHosts: ['conference-wilderness-dat-machinery.trycloudflare.com'],
   },
 });

@@ -70,6 +70,29 @@ export class CanvasImageRenderer {
     const offset = this.#options.getWindowOffset();
     let visibleImages = 0;
 
+    const firstVisibleRow = Math.max(0, Math.floor(scrollTop / IMAGE_ROW_HEIGHT));
+    const lastVisibleRow = Math.min(
+      Math.ceil(total / columns) - 1,
+      Math.ceil((scrollTop + height) / IMAGE_ROW_HEIGHT) - 1,
+    );
+    const visibleRecords: PhotoRecord[] = [];
+    const overscanRecords: PhotoRecord[] = [];
+    const firstWantedRow = Math.max(0, firstVisibleRow - 1);
+    const lastWantedRow = Math.min(Math.ceil(total / columns) - 1, lastVisibleRow + 1);
+
+    for (let row = firstWantedRow; row <= lastWantedRow; row += 1) {
+      for (let column = 0; column < columns; column += 1) {
+        const index = row * columns + column;
+        if (index >= total) break;
+        const localIndex = index - offset;
+        const record = records[localIndex];
+        if (!record) continue;
+        if (row >= firstVisibleRow && row <= lastVisibleRow) visibleRecords.push(record);
+        else overscanRecords.push(record);
+      }
+    }
+    this.#cache.updateViewport(visibleRecords, overscanRecords);
+
     for (let row = firstRow; row <= lastRow; row += 1) {
       for (let column = 0; column < columns; column += 1) {
         const index = row * columns + column;
@@ -113,8 +136,6 @@ export class CanvasImageRenderer {
             IMAGE_TILE_SIZE,
           );
           context.restore();
-        } else {
-          this.#cache.request(record);
         }
         visibleImages += 1;
       }
