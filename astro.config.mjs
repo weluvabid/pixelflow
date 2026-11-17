@@ -12,6 +12,6 @@ export default defineConfig({
   },
   server: {
     host: true,
-    allowedHosts: ['conference-wilderness-dat-machinery.trycloudflare.com'],
+    allowedHosts: ['tongue-fantastic-repeat-observe.trycloudflare.com'],
   },
 });

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import * as ScrollArea from '@weluvabid/iris/components/ui/scroll-area';
+  import { Toaster, toast } from '@weluvabid/iris/components/ui/sonner';
   import LivePerformanceDock from './LivePerformanceDock.svelte';
   import { ImageWorkerClient } from '@lib/pixelflow/worker/client.ts';
   import { CanvasImageRenderer } from '@lib/pixelflow/dashboard/canvas-image-renderer.ts';
@@ -14,16 +15,37 @@
   let total = $state(0);
   let columns = $state(IMAGE_COLUMNS);
   let records = $state<readonly PhotoRecord[]>([]);
+  let accessibleRecords = $state<readonly { record: PhotoRecord; position: number }[]>([]);
   let windowOffset = $state(0);
   let status = $state<'initializing' | 'ready' | 'error'>('initializing');
   let errorMessage = $state('');
   let renderMs = $state(0);
   let workerMs = $state(0);
-  let visibleImages = $state(0);
+  let loadedImages = $state(0);
   let fps = $state(0);
   let frameSamples = $state<number[]>([]);
   let renderer: CanvasImageRenderer | null = null;
   let initialized = false;
+  let imageFailureCount = 0;
+  let imageFailureTimer: ReturnType<typeof setTimeout> | undefined;
+  let accessibilityTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const IMAGE_FAILURE_TOAST_ID = 'pixelflow-image-load-failures';
+
+  function handleImageError(): void {
+    imageFailureCount += 1;
+
+    if (imageFailureTimer) clearTimeout(imageFailureTimer);
+    imageFailureTimer = setTimeout(() => {
+      const count = imageFailureCount;
+      toast.error(`${count.toLocaleString()} image${count === 1 ? '' : 's'} couldn't be loaded.`, {
+        id: IMAGE_FAILURE_TOAST_ID,
+        description: 'The rest of the collection is still available.',
+        duration: 5_000,
+      });
+      imageFailureTimer = undefined;
+    }, 300);
+  }
   let controller: VisibleWindowController<PhotoRecord> | null = null;
 
   function getRange() {
@@ -35,10 +57,36 @@
     return { first: firstRow * columns, last: Math.max(firstRow * columns, Math.min(total - 1, (lastRow + 1) * columns - 1)) };
   }
 
+  function updateAccessibleRecords(): void {
+    accessibilityTimer = undefined;
+    if (!scrollElement || total === 0 || records.length === 0) {
+      accessibleRecords = [];
+      return;
+    }
+    const firstRow = Math.max(0, Math.floor(scrollElement.scrollTop / IMAGE_ROW_HEIGHT));
+    const lastRow = Math.min(
+      Math.ceil(total / columns) - 1,
+      Math.ceil((scrollElement.scrollTop + scrollElement.clientHeight) / IMAGE_ROW_HEIGHT) - 1,
+    );
+    const first = firstRow * columns;
+    const last = Math.min(total - 1, (lastRow + 1) * columns - 1);
+    const next: { record: PhotoRecord; position: number }[] = [];
+    for (let position = first; position <= last; position += 1) {
+      const record = records[position - windowOffset];
+      if (record) next.push({ record, position: position + 1 });
+    }
+    accessibleRecords = next;
+  }
+
+  function scheduleAccessibleRecords(): void {
+    if (accessibilityTimer) clearTimeout(accessibilityTimer);
+    accessibilityTimer = setTimeout(updateAccessibleRecords, 120);
+  }
+
   function requestWindow(force = false): Promise<void> { return initialized ? (controller?.request(force) ?? Promise.resolve()) : Promise.resolve(); }
   function draw(): void { renderer?.schedule(); }
-  function handleScroll(): void { void requestWindow(); draw(); }
-  function handleResize(): void { void requestWindow(true); draw(); }
+  function handleScroll(): void { void requestWindow(); draw(); scheduleAccessibleRecords(); }
+  function handleResize(): void { void requestWindow(true); draw(); scheduleAccessibleRecords(); }
 
   onMount(() => {
     const worker = new ImageWorkerClient(new URL(`${import.meta.env.BASE_URL}dataset/`, window.location.href).toString());
@@ -54,10 +102,10 @@
       getWindowOffset: () => windowOffset,
       getTotal: () => total,
       getColumns: () => columns,
-      onImageError: (error) => { errorMessage = error.message; },
+      onImageError: handleImageError,
       onMetrics: (metrics) => {
         const now = performance.now();
-        if (now - lastMetrics >= 250) { renderMs = metrics.renderMs; visibleImages = metrics.visibleImages; lastMetrics = now; }
+        if (now - lastMetrics >= 250) { renderMs = metrics.renderMs; loadedImages = metrics.loadedImages; lastMetrics = now; }
         if (window.innerWidth >= 768 && now - lastHistory >= 500) { frameSamples = [...frameSamples.slice(-47), metrics.renderMs]; lastHistory = now; }
       },
     });
@@ -71,7 +119,7 @@
       getRange,
       hasCachedRange: ({ first, last }) => first >= windowOffset && last < windowOffset + records.length,
       getExpectedTotal: () => total || null,
-      onPage: (page) => { records = page.records; windowOffset = page.offset; draw(); },
+      onPage: (page) => { records = page.records; windowOffset = page.offset; draw(); scheduleAccessibleRecords(); },
       onError: (error) => { errorMessage = error instanceof Error ? error.message : 'Unable to retrieve image records.'; status = 'error'; },
     });
 
@@ -113,6 +161,10 @@
 
     return () => {
       disposed = true;
+      if (imageFailureTimer) clearTimeout(imageFailureTimer);
+      if (accessibilityTimer) clearTimeout(accessibilityTimer);
+      imageFailureTimer = undefined;
+      accessibilityTimer = undefined;
       cancelAnimationFrame(fpsFrame);
       resizeObserver.disconnect();
       scrollElement?.removeEventListener('scroll', handleScroll);
@@ -141,5 +193,13 @@
       </div>
     {/if}
   </ScrollArea.Root>
-  <LivePerformanceDock {fps} {renderMs} {workerMs} {visibleImages} {frameSamples} />
+  <ul class="sr-only" aria-label="Photographs">
+    {#each accessibleRecords as item (item.record.id)}
+      <li aria-posinset={item.position} aria-setsize={total}>
+        Photograph {item.position} of {total}, by {item.record.photographer}.
+      </li>
+    {/each}
+  </ul>
+  <LivePerformanceDock {fps} {renderMs} {workerMs} {loadedImages} {frameSamples} />
+  <Toaster position="top-center" richColors />
 </section>

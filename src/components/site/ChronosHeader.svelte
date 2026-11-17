@@ -4,8 +4,8 @@
   import { Moon, Sun } from '@weluvabid/iris/lucide';
   import { SiGithub } from '@weluvabid/iris/simple-icons';
   import { getInitialTheme, toggleTheme } from '@weluvabid/iris/theme';
-  import ghostMark from '../../../brand/me/brand/mark.svg?url';
-  import ghostMarkDark from '../../../brand/me/brand/mark-dark.svg?url';
+  import ghostMarkOnDark from '../../../brand/me/brand/mark.svg?url';
+  import ghostMarkOnLight from '../../../brand/me/brand/mark-dark.svg?url';
 
   let theme = $state<'light' | 'dark'>('light');
   let hydrated = $state(false);
@@ -25,8 +25,8 @@
 <Tooltip.Provider delayDuration={300}>
   <SiteHeader>
     <span class="inline-flex min-h-10 shrink-0 items-center" aria-hidden="true">
-      <img src={ghostMark} alt="" class="block h-8 w-[34.56px] dark:hidden" />
-      <img src={ghostMarkDark} alt="" class="hidden h-8 w-[34.56px] dark:block" />
+      <img src={ghostMarkOnDark} alt="" class="hidden h-8 w-[34.56px] dark:block" />
+      <img src={ghostMarkOnLight} alt="" class="block h-8 w-[34.56px] dark:hidden" />
     </span>
 
     <nav class="flex shrink-0 items-center gap-1" aria-label="Primary navigation">

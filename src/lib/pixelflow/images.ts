@@ -6,6 +6,7 @@ export const IMAGE_CACHE_SIZE = 48;
 export const IMAGE_FETCH_CONCURRENCY = 6;
 export const IMAGE_DECODE_CONCURRENCY = 4;
 export const IMAGE_OVERSCAN_DELAY_MS = 120;
+export const IMAGE_FADE_DURATION_MS = 140;
 
 export interface PhotoRecord {
   readonly id: string;

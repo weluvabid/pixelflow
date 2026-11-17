@@ -1,5 +1,5 @@
 import { ImageCache } from './image-cache.ts';
-import { IMAGE_ROW_HEIGHT, IMAGE_TILE_SIZE, type PhotoRecord } from '../images.ts';
+import { IMAGE_FADE_DURATION_MS, IMAGE_ROW_HEIGHT, IMAGE_TILE_SIZE, type PhotoRecord } from '../images.ts';
 
 const MAX_DPR = 2;
 const INSET = 12;
@@ -14,7 +14,7 @@ export interface CanvasImageRendererOptions {
   readonly getWindowOffset: () => number;
   readonly getTotal: () => number;
   readonly getColumns: () => number;
-  readonly onMetrics: (metrics: { renderMs: number; visibleImages: number }) => void;
+  readonly onMetrics: (metrics: { renderMs: number; loadedImages: number }) => void;
   readonly onImageError: (error: Error) => void;
 }
 
@@ -23,10 +23,21 @@ export class CanvasImageRenderer {
   readonly #cache: ImageCache;
   #frame = 0;
   #destroyed = false;
+  readonly #fadeStartedAt = new Map<string, number>();
 
   constructor(options: CanvasImageRendererOptions) {
     this.#options = options;
-    this.#cache = new ImageCache(() => this.schedule(), options.onImageError);
+    this.#cache = new ImageCache((photoId) => {
+      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        this.#fadeStartedAt.set(photoId, performance.now());
+        while (this.#fadeStartedAt.size > 48) {
+          const oldest = this.#fadeStartedAt.keys().next().value;
+          if (oldest === undefined) break;
+          this.#fadeStartedAt.delete(oldest);
+        }
+      }
+      this.schedule();
+    }, options.onImageError);
   }
 
   schedule(): void {
@@ -39,6 +50,7 @@ export class CanvasImageRenderer {
     if (this.#frame) cancelAnimationFrame(this.#frame);
     this.#frame = 0;
     this.#cache.destroy();
+    this.#fadeStartedAt.clear();
   }
 
   draw(): void {
@@ -57,7 +69,10 @@ export class CanvasImageRenderer {
     if (!context) throw new Error('Canvas 2D context is unavailable.');
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
     const styles = getComputedStyle(canvas);
-    context.fillStyle = styles.getPropertyValue('--color-background').trim() || '#fff';
+    const background = styles.getPropertyValue('--color-background').trim() || '#fff';
+    const muted = styles.getPropertyValue('--color-muted').trim() || '#eee';
+    const cardSurface = styles.getPropertyValue('--color-card').trim() || background;
+    context.fillStyle = background;
     context.fillRect(0, 0, width, height);
 
     const total = this.#options.getTotal();
@@ -68,7 +83,6 @@ export class CanvasImageRenderer {
     const cardWidth = (width - INSET * 2 - GAP * (columns - 1)) / columns;
     const records = this.#options.getRecords();
     const offset = this.#options.getWindowOffset();
-    let visibleImages = 0;
 
     const firstVisibleRow = Math.max(0, Math.floor(scrollTop / IMAGE_ROW_HEIGHT));
     const lastVisibleRow = Math.min(
@@ -93,6 +107,9 @@ export class CanvasImageRenderer {
     }
     this.#cache.updateViewport(visibleRecords, overscanRecords);
 
+    let hasActiveFades = false;
+    const fadeNow = performance.now();
+
     for (let row = firstRow; row <= lastRow; row += 1) {
       for (let column = 0; column < columns; column += 1) {
         const index = row * columns + column;
@@ -104,8 +121,14 @@ export class CanvasImageRenderer {
         const x = INSET + column * (cardWidth + GAP);
         const y = row * IMAGE_ROW_HEIGHT - scrollTop + (IMAGE_ROW_HEIGHT - IMAGE_TILE_SIZE) / 2;
         const bitmap = this.#cache.get(record.id);
-        context.fillStyle = styles.getPropertyValue('--color-muted').trim() || '#eee';
-        context.fillRect(x, y, cardWidth, IMAGE_TILE_SIZE);
+        const skeleton = context.createLinearGradient(x, y, x + cardWidth, y + IMAGE_TILE_SIZE);
+        skeleton.addColorStop(0, muted);
+        skeleton.addColorStop(0.52, cardSurface);
+        skeleton.addColorStop(1, muted);
+        context.fillStyle = skeleton;
+        context.beginPath();
+        context.roundRect(x, y, cardWidth, IMAGE_TILE_SIZE, 8);
+        context.fill();
         if (bitmap) {
           context.save();
           context.beginPath(); context.roundRect(x, y, cardWidth, IMAGE_TILE_SIZE, 8); context.clip();
@@ -124,6 +147,13 @@ export class CanvasImageRenderer {
             sourceY = (bitmap.height - sourceHeight) / 2;
           }
 
+          const fadeStartedAt = this.#fadeStartedAt.get(record.id);
+          if (fadeStartedAt !== undefined) {
+            const progress = Math.min(1, (fadeNow - fadeStartedAt) / IMAGE_FADE_DURATION_MS);
+            context.globalAlpha = progress;
+            if (progress < 1) hasActiveFades = true;
+            else this.#fadeStartedAt.delete(record.id);
+          }
           context.drawImage(
             bitmap,
             sourceX,
@@ -136,10 +166,11 @@ export class CanvasImageRenderer {
             IMAGE_TILE_SIZE,
           );
           context.restore();
+          context.globalAlpha = 1;
         }
-        visibleImages += 1;
       }
     }
-    this.#options.onMetrics({ renderMs: performance.now() - started, visibleImages });
+    this.#options.onMetrics({ renderMs: performance.now() - started, loadedImages: this.#cache.size });
+    if (hasActiveFades) this.schedule();
   }
 }

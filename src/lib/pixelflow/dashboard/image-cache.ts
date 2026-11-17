@@ -33,12 +33,16 @@ export class ImageCache {
   #desiredIds = new Set<string>();
   #visibleIds = new Set<string>();
   #overscanRecords: readonly PhotoRecord[] = [];
-  readonly #onChange: () => void;
+  readonly #onChange: (photoId: string) => void;
   readonly #onError: (error: Error) => void;
 
-  constructor(onChange: () => void, onError: (error: Error) => void) {
+  constructor(onChange: (photoId: string) => void, onError: (error: Error) => void) {
     this.#onChange = onChange;
     this.#onError = onError;
+  }
+
+  get size(): number {
+    return this.#bitmaps.size;
   }
 
   get(photoId: string): ImageBitmap | undefined {
@@ -206,7 +210,7 @@ export class ImageCache {
           this.#bitmaps.get(oldest)?.close();
           this.#bitmaps.delete(oldest);
         }
-        this.#onChange();
+        this.#onChange(task.record.id);
       }).catch((error: unknown) => {
         if (task.controller.signal.aborted || this.#destroyed) return;
         this.#failed.add(task.record.id);
