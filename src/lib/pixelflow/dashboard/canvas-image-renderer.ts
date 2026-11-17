@@ -121,15 +121,16 @@ export class CanvasImageRenderer {
         const x = INSET + column * (cardWidth + GAP);
         const y = row * IMAGE_ROW_HEIGHT - scrollTop + (IMAGE_ROW_HEIGHT - IMAGE_TILE_SIZE) / 2;
         const bitmap = this.#cache.get(record.id);
-        const skeleton = context.createLinearGradient(x, y, x + cardWidth, y + IMAGE_TILE_SIZE);
-        skeleton.addColorStop(0, muted);
-        skeleton.addColorStop(0.52, cardSurface);
-        skeleton.addColorStop(1, muted);
-        context.fillStyle = skeleton;
-        context.beginPath();
-        context.roundRect(x, y, cardWidth, IMAGE_TILE_SIZE, 8);
-        context.fill();
-        if (bitmap) {
+        if (!bitmap) {
+          const skeleton = context.createLinearGradient(x, y, x + cardWidth, y + IMAGE_TILE_SIZE);
+          skeleton.addColorStop(0, muted);
+          skeleton.addColorStop(0.52, cardSurface);
+          skeleton.addColorStop(1, muted);
+          context.fillStyle = skeleton;
+          context.beginPath();
+          context.roundRect(x, y, cardWidth, IMAGE_TILE_SIZE, 8);
+          context.fill();
+        } else {
           context.save();
           context.beginPath(); context.roundRect(x, y, cardWidth, IMAGE_TILE_SIZE, 8); context.clip();
           const sourceRatio = bitmap.width / bitmap.height;

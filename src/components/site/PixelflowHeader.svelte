@@ -18,7 +18,7 @@
   function handleThemeToggle(): void {
     theme = toggleTheme(theme);
 
-    document.dispatchEvent(new CustomEvent('chronos:themechange', { detail: { theme } }));
+    document.dispatchEvent(new CustomEvent('pixelflow:themechange', { detail: { theme } }));
   }
 </script>
 

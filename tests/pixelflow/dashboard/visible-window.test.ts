@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   VisibleWindowController,
   type WindowPage,
-} from '../../../src/lib/chronos/dashboard/visible-window.ts';
+} from '../../../src/lib/pixelflow/dashboard/visible-window.ts';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;

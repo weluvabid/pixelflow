@@ -31,10 +31,22 @@ export class ImageWorkerClient {
     this.ready = this.#request<{ type: 'READY'; total: number }>({
       type: 'INIT',
       datasetBaseUrl,
-    }).then(({ total }) => ({ total }));
+    }).then(({ total }) => {
+      if (!Number.isSafeInteger(total) || total < 1) {
+        throw new Error('Image worker returned an invalid dataset size.');
+      }
+      return { total };
+    });
   }
 
   async query(offset: number, limit: number): Promise<ImageWindow> {
+    if (
+      !Number.isSafeInteger(offset) || offset < 0 ||
+      !Number.isSafeInteger(limit) || limit < 1 || limit > 10_000
+    ) {
+      throw new RangeError('Image query range is invalid.');
+    }
+
     const result = await this.#request<{
       type: 'WINDOW';
       offset: number;
@@ -42,7 +54,12 @@ export class ImageWorkerClient {
       records: PhotoRecord[];
     }>({ type: 'QUERY', offset, limit });
 
-    if (!Array.isArray(result.records) || result.records.length > limit) {
+    if (
+      result.offset !== offset ||
+      !Number.isSafeInteger(result.total) || result.total < 1 ||
+      !Array.isArray(result.records) || result.records.length > limit ||
+      (result.records.length > 0 && offset + result.records.length > result.total)
+    ) {
       throw new Error('Image worker returned an invalid window.');
     }
 

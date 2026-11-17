@@ -1,5 +1,5 @@
 ---
-import ChronosHeader from '@components/site/ChronosHeader.svelte';
+import PixelflowHeader from '@components/site/PixelflowHeader.svelte';
 import { ClientRouter } from 'astro:transitions';
 import { createThemeScript } from '@weluvabid/iris/theme';
 import '@styles/global.css';
@@ -45,7 +45,7 @@ const themeBootstrap = createThemeScript();
     </a>
     <div class="mx-auto flex h-dvh w-full max-w-6xl flex-col overflow-hidden px-4 sm:px-6">
       <div class="sticky top-0 z-40 -mx-4 bg-background/95 px-4 backdrop-blur sm:-mx-6 sm:px-6">
-        <ChronosHeader client:load />
+        <PixelflowHeader client:load />
       </div>
       <main
         id="main-content"

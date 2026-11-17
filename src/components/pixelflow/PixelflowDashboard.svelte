@@ -5,9 +5,9 @@
   import LivePerformanceDock from './LivePerformanceDock.svelte';
   import { ImageWorkerClient } from '@lib/pixelflow/worker/client.ts';
   import { CanvasImageRenderer } from '@lib/pixelflow/dashboard/canvas-image-renderer.ts';
-  import { VisibleWindowController } from '@lib/chronos/dashboard/visible-window.ts';
+  import { VisibleWindowController } from '@lib/pixelflow/dashboard/visible-window.ts';
   import { IMAGE_COLUMNS, IMAGE_OVERSCAN_ROWS, IMAGE_ROW_HEIGHT, type PhotoRecord } from '@lib/pixelflow/images.ts';
-  import { getMatrixColumns } from '@lib/chronos/dashboard/matrix-model.ts';
+  import { getMatrixColumns } from '@lib/pixelflow/dashboard/matrix-layout.ts';
 
   let scrollElement: HTMLElement | null = $state(null);
   let spacerElement: HTMLDivElement | null = $state(null);
@@ -146,7 +146,7 @@
     }
     if (spacerElement) resizeObserver.observe(spacerElement);
     window.addEventListener('resize', handleResize, { passive: true });
-    document.addEventListener('chronos:themechange', handleThemeChange);
+    document.addEventListener('pixelflow:themechange', handleThemeChange);
 
     void worker.ready.then(async (summary) => {
       if (disposed) return;
@@ -172,7 +172,7 @@
       scrollElement?.removeEventListener('scroll', handleScroll);
       scrollElement?.classList.remove('pixelflow-scroll-viewport');
       window.removeEventListener('resize', handleResize);
-      document.removeEventListener('chronos:themechange', handleThemeChange);
+      document.removeEventListener('pixelflow:themechange', handleThemeChange);
       renderer?.destroy(); controller?.close(); worker.close();
       renderer = null; controller = null;
     };
@@ -183,7 +183,7 @@
   {#if errorMessage}<div role="alert" class="border-y border-destructive/40 py-3 text-sm text-destructive">{errorMessage}</div>{/if}
   <div class="flex shrink-0 items-center justify-between gap-3">
     <div>
-      <p class="text-xs font-semibold uppercase tracking-[0.18em]">Image matrix {#if total > 0}[{columns} columns]{/if}</p>
+      <p class="text-xs font-semibold uppercase tracking-[0.18em]">Image matrix {#if total > 0}[{columns} column(s)]{/if}</p>
       <p class="mt-1 text-xs text-muted-foreground">{total.toLocaleString()} photographs · Canvas 2D</p>
     </div>
   </div>

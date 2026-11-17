@@ -141,11 +141,18 @@ export class ImageCache {
 
   #drainFetches(): void {
     while (!this.#destroyed && this.#activeFetches < IMAGE_FETCH_CONCURRENCY && this.#queued.size > 0) {
-      const next = [...this.#queued.values()]
-        .sort((a, b) => a.priority - b.priority)[0];
-      if (!next) throw new Error('Image request queue became inconsistent.');
+      let nextId: string | undefined;
+      let next: QueuedImage | undefined;
+      for (const [id, queued] of this.#queued) {
+        if (!next || queued.priority < next.priority) {
+          nextId = id;
+          next = queued;
+          if (queued.priority === 0) break;
+        }
+      }
+      if (!nextId || !next) throw new Error('Image request queue became inconsistent.');
 
-      this.#queued.delete(next.record.id);
+      this.#queued.delete(nextId);
       const controller = new AbortController();
       this.#requests.set(next.record.id, controller);
       this.#activeFetches += 1;
@@ -218,6 +225,16 @@ export class ImageCache {
       }).finally(() => {
         this.#decoding.delete(task.record.id);
         this.#activeDecodes -= 1;
+        if (
+          !this.#destroyed &&
+          this.#desiredIds.has(task.record.id) &&
+          !this.#bitmaps.has(task.record.id) &&
+          !this.#failed.has(task.record.id) &&
+          !this.#requests.has(task.record.id)
+        ) {
+          this.#enqueue(task.record, this.#visibleIds.has(task.record.id) ? 0 : 1);
+          this.#drainFetches();
+        }
         this.#drainDecodes();
       });
     }

@@ -3,6 +3,7 @@ import svelte from '@astrojs/svelte';
 import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
+  site: 'https://weluvabid.github.io',
   output: 'static',
   base: process.env.ASTRO_BASE_PATH ?? '/',
   trailingSlash: 'always',
@@ -10,8 +11,8 @@ export default defineConfig({
   vite: {
     plugins: [tailwindcss()],
   },
-  server: {
-    host: true,
-    allowedHosts: ['tongue-fantastic-repeat-observe.trycloudflare.com'],
-  },
+  // server: {
+  //   host: true,
+  //   allowedHosts: [],
+  // },
 });

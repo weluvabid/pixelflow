@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { buildPerformancePolyline } from '@lib/chronos/dashboard/performance-history.ts';
+  import { buildPerformancePolyline } from '@lib/pixelflow/dashboard/performance-history.ts';
 
   let {
     fps,
