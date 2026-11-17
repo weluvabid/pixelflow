@@ -90,7 +90,11 @@
       if (nextColumns !== columns) { columns = nextColumns; void requestWindow(true); }
       draw();
     });
-    if (scrollElement) { resizeObserver.observe(scrollElement); scrollElement.addEventListener('scroll', handleScroll, { passive: true }); }
+    if (scrollElement) {
+      scrollElement.classList.add('pixelflow-scroll-viewport');
+      resizeObserver.observe(scrollElement);
+      scrollElement.addEventListener('scroll', handleScroll, { passive: true });
+    }
     if (spacerElement) resizeObserver.observe(spacerElement);
     window.addEventListener('resize', handleResize, { passive: true });
 
@@ -112,6 +116,7 @@
       cancelAnimationFrame(fpsFrame);
       resizeObserver.disconnect();
       scrollElement?.removeEventListener('scroll', handleScroll);
+      scrollElement?.classList.remove('pixelflow-scroll-viewport');
       window.removeEventListener('resize', handleResize);
       renderer?.destroy(); controller?.close(); worker.close();
       renderer = null; controller = null;

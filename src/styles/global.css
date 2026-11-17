@@ -12,6 +12,20 @@
     @apply bg-background font-sans text-foreground;
   }
 
+  /* Keep user-driven scrolling native; smooth only programmatic scrolls. */
+  .pixelflow-scroll-viewport {
+    scroll-behavior: smooth;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-gutter: stable;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pixelflow-scroll-viewport {
+      scroll-behavior: auto;
+    }
+  }
+
   body {
     @apply m-0 min-w-[320px] bg-background text-foreground antialiased;
   }
