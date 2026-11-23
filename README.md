@@ -8,6 +8,10 @@ Canvas is mostly associated with games, drawing and visual effects. I wanted to 
 
 The interesting part was retaining a useful screen-reader experience through a lightweight, visually hidden DOM layer, without bringing back the thousands of DOM nodes I wanted to avoid in the first place.
 
+## Live demo
+
+[Open Pixelflow](https://weluvabid.github.io/pixelflow/)
+
 ## Rendering model
 
 - **Canvas 2D** draws the visible image tiles and a small overscan region. The full collection contributes to the scrollable height; it does not create one DOM node per photograph.
@@ -17,7 +21,7 @@ The interesting part was retaining a useful screen-reader experience through a l
 - **Native scrolling** remains browser-driven. Canvas work is scheduled with `requestAnimationFrame`.
 - **Accessibility** is provided through a bounded semantic list for the current viewport. Each item exposes its position in the full collection and photographer attribution. The Canvas is hidden from the accessibility tree to avoid duplicate representations.
 
-The semantic layer does not currently describe the visual contents of each photograph. It exposes the available metadata (position and photographer).
+The semantic layer exposes each photograph’s position in the collection and photographer attribution.
 
 ## Live measurements
 
