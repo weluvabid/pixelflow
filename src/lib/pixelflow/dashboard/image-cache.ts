@@ -2,6 +2,10 @@ import {
   IMAGE_CACHE_SIZE,
   IMAGE_DECODE_CONCURRENCY,
   IMAGE_FETCH_CONCURRENCY,
+  IMAGE_FETCH_MAX_RETRIES,
+  IMAGE_FETCH_TIMEOUT_MS,
+  IMAGE_RETRY_BASE_DELAY_MS,
+  IMAGE_RETRY_MAX_DELAY_MS,
   IMAGE_OVERSCAN_DELAY_MS,
   optimizedImageUrl,
   type PhotoRecord,
@@ -12,10 +16,29 @@ interface QueuedImage {
   readonly priority: 0 | 1;
 }
 
+export interface ImageCacheOptions {
+  readonly fetchTimeoutMs?: number;
+  readonly maxRetries?: number;
+  readonly retryBaseDelayMs?: number;
+  readonly retryMaxDelayMs?: number;
+  readonly random?: () => number;
+}
+
 interface DecodeTask {
   readonly record: PhotoRecord;
   readonly blob: Blob;
   readonly controller: AbortController;
+}
+
+class ImageRequestError extends Error {
+  readonly status: number;
+
+  constructor(photoId: string, status: number) {
+    super(`Image ${photoId} failed: HTTP ${status}.`);
+
+    this.name = 'ImageRequestError';
+    this.status = status;
+  }
 }
 
 export class ImageCache {
@@ -25,6 +48,9 @@ export class ImageCache {
   readonly #decodeQueue: DecodeTask[] = [];
   readonly #decoding = new Set<string>();
   readonly #failed = new Set<string>();
+  readonly #retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  readonly #retryCounts = new Map<string, number>();
+  readonly #options: Required<ImageCacheOptions>;
   #activeFetches = 0;
   #activeDecodes = 0;
   #destroyed = false;
@@ -36,9 +62,20 @@ export class ImageCache {
   readonly #onChange: (photoId: string) => void;
   readonly #onError: (error: Error) => void;
 
-  constructor(onChange: (photoId: string) => void, onError: (error: Error) => void) {
+  constructor(
+    onChange: (photoId: string) => void,
+    onError: (error: Error) => void,
+    options: ImageCacheOptions = {},
+  ) {
     this.#onChange = onChange;
     this.#onError = onError;
+    this.#options = {
+      fetchTimeoutMs: options.fetchTimeoutMs ?? IMAGE_FETCH_TIMEOUT_MS,
+      maxRetries: options.maxRetries ?? IMAGE_FETCH_MAX_RETRIES,
+      retryBaseDelayMs: options.retryBaseDelayMs ?? IMAGE_RETRY_BASE_DELAY_MS,
+      retryMaxDelayMs: options.retryMaxDelayMs ?? IMAGE_RETRY_MAX_DELAY_MS,
+      random: options.random ?? Math.random,
+    };
   }
 
   get size(): number {
@@ -81,6 +118,14 @@ export class ImageCache {
       for (const [id, controller] of this.#requests) {
         if (!visibleIds.has(id)) {
           controller.abort();
+        }
+      }
+
+      for (const [id, timer] of this.#retryTimers) {
+        if (!visibleIds.has(id)) {
+          clearTimeout(timer);
+          this.#retryTimers.delete(id);
+          this.#retryCounts.delete(id);
         }
       }
 
@@ -150,6 +195,13 @@ export class ImageCache {
     this.#requests.clear();
     this.#queued.clear();
 
+    for (const timer of this.#retryTimers.values()) {
+      clearTimeout(timer);
+    }
+
+    this.#retryTimers.clear();
+    this.#retryCounts.clear();
+
     for (const task of this.#decodeQueue) {
       task.controller.abort();
     }
@@ -171,6 +223,7 @@ export class ImageCache {
       this.#bitmaps.has(record.id) ||
       this.#failed.has(record.id) ||
       this.#requests.has(record.id) ||
+      this.#retryTimers.has(record.id) ||
       this.#decoding.has(record.id)
     ) {
       return;
@@ -224,7 +277,9 @@ export class ImageCache {
         if (
           this.#desiredIds.has(next.record.id) &&
           !this.#bitmaps.has(next.record.id) &&
-          !this.#failed.has(next.record.id)
+          !this.#failed.has(next.record.id) &&
+          !this.#retryTimers.has(next.record.id) &&
+          !this.#decoding.has(next.record.id)
         ) {
           this.#enqueue(next.record, this.#visibleIds.has(next.record.id) ? 0 : 1);
         }
@@ -235,32 +290,56 @@ export class ImageCache {
   }
 
   async #fetch(record: PhotoRecord, controller: AbortController): Promise<void> {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+
     try {
-      const response = await fetch(optimizedImageUrl(record.imageUrl), {
-        mode: 'cors',
-        credentials: 'omit',
-        signal: controller.signal,
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          reject(new DOMException(`Image ${record.id} request timed out.`, 'TimeoutError'));
+          controller.abort();
+        }, this.#options.fetchTimeoutMs);
       });
+      const responsePromise = (async () => {
+        const response = await fetch(optimizedImageUrl(record.imageUrl), {
+          mode: 'cors',
+          credentials: 'omit',
+          signal: controller.signal,
+        });
 
-      if (!response.ok) {
-        throw new Error(`Image ${record.id} failed: HTTP ${response.status}.`);
-      }
+        if (!response.ok) {
+          throw new ImageRequestError(record.id, response.status);
+        }
 
-      const blob = await response.blob();
+        return response.blob();
+      })();
+      const blob = await Promise.race([responsePromise, timeoutPromise]);
 
       if (controller.signal.aborted || this.#destroyed || !this.#desiredIds.has(record.id)) {
         return;
       }
 
+      this.#retryCounts.delete(record.id);
       this.#decodeQueue.push({ record, blob, controller });
       this.#decoding.add(record.id);
       this.#drainDecodes();
     } catch (error) {
       if (
-        controller.signal.aborted ||
-        this.#destroyed ||
-        (error instanceof DOMException && error.name === 'AbortError')
+        controller.signal.aborted &&
+        !(error instanceof DOMException && error.name === 'TimeoutError')
       ) {
+        return;
+      }
+
+      if (this.#destroyed || !this.#desiredIds.has(record.id)) {
+        return;
+      }
+
+      if (this.#isRetryable(error)) {
+        this.#scheduleRetry(
+          record,
+          error instanceof Error ? error : new Error('Image request failed.'),
+        );
+
         return;
       }
 
@@ -268,7 +347,59 @@ export class ImageCache {
       this.#onError(
         error instanceof Error ? error : new Error(`Image ${record.id} failed to load.`),
       );
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
     }
+  }
+
+  #isRetryable(error: unknown): boolean {
+    if (error instanceof ImageRequestError) {
+      return error.status === 408 || error.status === 429 || error.status >= 500;
+    }
+
+    return (
+      error instanceof TypeError || (error instanceof DOMException && error.name === 'TimeoutError')
+    );
+  }
+
+  #scheduleRetry(record: PhotoRecord, error: Error): void {
+    const retries = this.#retryCounts.get(record.id) ?? 0;
+
+    if (retries >= this.#options.maxRetries) {
+      this.#failed.add(record.id);
+      this.#onError(error);
+
+      return;
+    }
+
+    const nextRetry = retries + 1;
+
+    this.#retryCounts.set(record.id, nextRetry);
+
+    const exponentialDelay = Math.min(
+      this.#options.retryMaxDelayMs,
+      this.#options.retryBaseDelayMs * 2 ** (nextRetry - 1),
+    );
+    const jitteredDelay = Math.round(exponentialDelay * (0.5 + this.#options.random() * 0.5));
+    const timer = setTimeout(() => {
+      this.#retryTimers.delete(record.id);
+
+      if (
+        this.#destroyed ||
+        !this.#desiredIds.has(record.id) ||
+        this.#bitmaps.has(record.id) ||
+        this.#requests.has(record.id)
+      ) {
+        return;
+      }
+
+      this.#enqueue(record, this.#visibleIds.has(record.id) ? 0 : 1);
+      this.#drainFetches();
+    }, jitteredDelay);
+
+    this.#retryTimers.set(record.id, timer);
   }
 
   #drainDecodes(): void {

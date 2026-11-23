@@ -19,6 +19,9 @@
   let canvasElement: HTMLCanvasElement | null = $state(null);
   let total = $state(0);
   let columns = $state(IMAGE_COLUMNS);
+  let viewportHeight = $state(1);
+  let viewportMeasured = $state(false);
+  let skeletonRows = $derived(Math.ceil(viewportHeight / IMAGE_ROW_HEIGHT) + 1);
   let records = $state<readonly PhotoRecord[]>([]);
   let accessibleRecords = $state<readonly { record: PhotoRecord; position: number }[]>([]);
   let windowOffset = $state(0);
@@ -212,7 +215,12 @@
     fpsFrame = requestAnimationFrame(sampleFps);
 
     const resizeObserver = new ResizeObserver(() => {
-      const nextColumns = getMatrixColumns(spacerElement?.clientWidth ?? window.innerWidth);
+      viewportHeight = Math.max(1, scrollElement?.clientHeight ?? 1);
+      viewportMeasured = scrollElement !== null && scrollElement.clientHeight > 0;
+
+      const nextColumns = getMatrixColumns(
+        spacerElement?.clientWidth ?? scrollElement?.clientWidth ?? window.innerWidth,
+      );
 
       if (nextColumns !== columns) {
         columns = nextColumns;
@@ -227,6 +235,9 @@
       scrollElement.classList.add('pixelflow-scroll-viewport');
       resizeObserver.observe(scrollElement);
       scrollElement.addEventListener('scroll', handleScroll, { passive: true });
+
+      viewportHeight = Math.max(1, scrollElement.clientHeight);
+      viewportMeasured = scrollElement.clientHeight > 0;
     }
 
     if (spacerElement) {
@@ -312,11 +323,26 @@
     class="relative min-h-[180px] min-w-0 flex-1"
   >
     {#if total === 0}
-      <div
-        class="grid min-h-72 w-full place-items-center px-4 text-center text-sm text-muted-foreground"
-      >
-        {status === 'initializing' ? 'Loading image collection…' : 'Waiting for image worker…'}
-      </div>
+      {#if status === 'initializing'}
+        <div
+          class:invisible={!viewportMeasured}
+          class="grid w-full content-start"
+          style={`height:${skeletonRows * IMAGE_ROW_HEIGHT}px;grid-template-columns:repeat(${columns},minmax(0,1fr));column-gap:14px;row-gap:16px;padding:8px 12px`}
+          role="status"
+          aria-label="Loading photographs"
+          aria-busy="true"
+        >
+          {#each Array.from({ length: skeletonRows * columns }, (_, index) => index) as index (index)}
+            <div aria-hidden="true" class="h-[164px] animate-pulse rounded-lg bg-muted"></div>
+          {/each}
+        </div>
+      {:else}
+        <div
+          class="grid min-h-72 w-full place-items-center px-4 text-center text-sm text-muted-foreground"
+        >
+          Image worker is unavailable.
+        </div>
+      {/if}
     {:else}
       <div
         bind:this={spacerElement}
