@@ -20,7 +20,6 @@
   let total = $state(0);
   let columns = $state(IMAGE_COLUMNS);
   let viewportHeight = $state(1);
-  let viewportMeasured = $state(false);
   let skeletonRows = $derived(Math.ceil(viewportHeight / IMAGE_ROW_HEIGHT) + 1);
   let records = $state<readonly PhotoRecord[]>([]);
   let accessibleRecords = $state<readonly { record: PhotoRecord; position: number }[]>([]);
@@ -216,7 +215,6 @@
 
     const resizeObserver = new ResizeObserver(() => {
       viewportHeight = Math.max(1, scrollElement?.clientHeight ?? 1);
-      viewportMeasured = scrollElement !== null && scrollElement.clientHeight > 0;
 
       const nextColumns = getMatrixColumns(
         spacerElement?.clientWidth ?? scrollElement?.clientWidth ?? window.innerWidth,
@@ -237,8 +235,12 @@
       scrollElement.addEventListener('scroll', handleScroll, { passive: true });
 
       viewportHeight = Math.max(1, scrollElement.clientHeight);
-      viewportMeasured = scrollElement.clientHeight > 0;
+      columns = getMatrixColumns(
+        spacerElement?.clientWidth ?? scrollElement.clientWidth ?? window.innerWidth,
+      );
     }
+
+    draw();
 
     if (spacerElement) {
       resizeObserver.observe(spacerElement);
@@ -322,39 +324,21 @@
     orientation="vertical"
     class="relative min-h-[180px] min-w-0 flex-1"
   >
-    {#if total === 0}
-      {#if status === 'initializing'}
-        <div
-          class:invisible={!viewportMeasured}
-          class="grid w-full content-start"
-          style={`height:${skeletonRows * IMAGE_ROW_HEIGHT}px;grid-template-columns:repeat(${columns},minmax(0,1fr));column-gap:14px;row-gap:16px;padding:8px 12px`}
-          role="status"
-          aria-label="Loading photographs"
-          aria-busy="true"
-        >
-          {#each Array.from({ length: skeletonRows * columns }, (_, index) => index) as index (index)}
-            <div aria-hidden="true" class="h-[164px] animate-pulse rounded-lg bg-muted"></div>
-          {/each}
-        </div>
-      {:else}
-        <div
-          class="grid min-h-72 w-full place-items-center px-4 text-center text-sm text-muted-foreground"
-        >
-          Image worker is unavailable.
-        </div>
-      {/if}
-    {:else}
-      <div
-        bind:this={spacerElement}
-        class="relative w-full"
-        style={`height:${Math.ceil(total / columns) * IMAGE_ROW_HEIGHT}px`}
-      >
-        <canvas
-          bind:this={canvasElement}
-          class="sticky top-0 z-10 block w-full bg-background touch-pan-y"
-          aria-hidden="true"
-        ></canvas>
-      </div>
+    <div
+      bind:this={spacerElement}
+      class="relative w-full"
+      style={`height:${(total > 0 ? Math.ceil(total / columns) : skeletonRows) * IMAGE_ROW_HEIGHT}px`}
+    >
+      <canvas
+        bind:this={canvasElement}
+        class="sticky top-0 z-10 block w-full bg-background touch-pan-y"
+        aria-hidden="true"
+      ></canvas>
+    </div>
+    {#if status === 'initializing'}
+      <span class="sr-only" role="status" aria-live="polite" aria-busy="true">
+        Loading photographs
+      </span>
     {/if}
   </ScrollArea.Root>
   <ul class="sr-only" aria-label="Photographs">

@@ -1,4 +1,4 @@
-import type { PhotoRecord } from '../images.ts';
+import { DATASET_FETCH_TIMEOUT_MS, type PhotoRecord } from '../images.ts';
 
 interface WorkerScope {
   onmessage: ((event: MessageEvent<unknown>) => void) | null;
@@ -22,13 +22,29 @@ const chunks = new Map<number, readonly PhotoRecord[]>();
 const inFlight = new Map<number, Promise<readonly PhotoRecord[]>>();
 
 async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url, { credentials: 'omit' });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DATASET_FETCH_TIMEOUT_MS);
 
-  if (!response.ok) {
-    throw new Error(`Dataset request failed (${response.status}): ${url}`);
+  try {
+    const response = await fetch(url, {
+      credentials: 'omit',
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Dataset request failed (${response.status}): ${url}`);
+    }
+
+    return (await response.json()) as T;
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(`Dataset request timed out after ${DATASET_FETCH_TIMEOUT_MS}ms: ${url}`);
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  return response.json() as Promise<T>;
 }
 
 function validateMetadata(value: DatasetMetadata): void {

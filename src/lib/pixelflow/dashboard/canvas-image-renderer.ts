@@ -10,6 +10,27 @@ const MAX_DPR = 2;
 const INSET = 12;
 const GAP = 14;
 
+function drawSkeleton(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  muted: string,
+  cardSurface: string,
+): void {
+  const skeleton = context.createLinearGradient(x, y, x + width, y + IMAGE_TILE_SIZE);
+
+  skeleton.addColorStop(0, muted);
+  skeleton.addColorStop(0.52, cardSurface);
+  skeleton.addColorStop(1, muted);
+
+  context.fillStyle = skeleton;
+
+  context.beginPath();
+  context.roundRect(x, y, width, IMAGE_TILE_SIZE, 8);
+  context.fill();
+}
+
 export interface CanvasImageRendererOptions {
   readonly getCanvas: () => HTMLCanvasElement | null;
   readonly getScroller: () => HTMLElement | null;
@@ -119,10 +140,10 @@ export class CanvasImageRenderer {
     const scrollTop = this.#options.getScrollTop();
     const columns = this.#options.getColumns();
     const firstRow = Math.max(0, Math.floor(scrollTop / IMAGE_ROW_HEIGHT) - 3);
-    const lastRow = Math.min(
-      Math.ceil(total / columns) - 1,
-      Math.ceil((scrollTop + height) / IMAGE_ROW_HEIGHT) + 2,
-    );
+    const rowCount =
+      total > 0 ? Math.ceil(total / columns) : Math.ceil(height / IMAGE_ROW_HEIGHT) + 1;
+    const renderTotal = total > 0 ? total : rowCount * columns;
+    const lastRow = Math.min(rowCount - 1, Math.ceil((scrollTop + height) / IMAGE_ROW_HEIGHT) + 2);
     const cardWidth = (width - INSET * 2 - GAP * (columns - 1)) / columns;
     const records = this.#options.getRecords();
     const offset = this.#options.getWindowOffset();
@@ -169,38 +190,27 @@ export class CanvasImageRenderer {
       for (let column = 0; column < columns; column += 1) {
         const index = row * columns + column;
 
-        if (index >= total) {
+        if (index >= renderTotal) {
           break;
         }
 
         const localIndex = index - offset;
+        const record = records[localIndex];
+        const x = INSET + column * (cardWidth + GAP);
+        const y = row * IMAGE_ROW_HEIGHT - scrollTop + (IMAGE_ROW_HEIGHT - IMAGE_TILE_SIZE) / 2;
 
-        if (localIndex < 0 || localIndex >= records.length) {
+        // Tile geometry is independent of worker-window coverage. Missing records
+        // are transient during rapid scrolling and must remain visibly loading.
+        if (!record) {
+          drawSkeleton(context, x, y, cardWidth, muted, cardSurface);
+
           continue;
         }
 
-        const record = records[localIndex];
-
-        if (!record) {
-          throw new Error(`Missing image record at viewport index ${index}.`);
-        }
-
-        const x = INSET + column * (cardWidth + GAP);
-        const y = row * IMAGE_ROW_HEIGHT - scrollTop + (IMAGE_ROW_HEIGHT - IMAGE_TILE_SIZE) / 2;
         const bitmap = this.#cache.get(record.id);
 
         if (!bitmap) {
-          const skeleton = context.createLinearGradient(x, y, x + cardWidth, y + IMAGE_TILE_SIZE);
-
-          skeleton.addColorStop(0, muted);
-          skeleton.addColorStop(0.52, cardSurface);
-          skeleton.addColorStop(1, muted);
-
-          context.fillStyle = skeleton;
-
-          context.beginPath();
-          context.roundRect(x, y, cardWidth, IMAGE_TILE_SIZE, 8);
-          context.fill();
+          drawSkeleton(context, x, y, cardWidth, muted, cardSurface);
         } else {
           context.save();
           context.beginPath();
