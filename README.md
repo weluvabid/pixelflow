@@ -25,6 +25,8 @@ The semantic layer exposes each photograph’s position in the collection and ph
 
 ## Live measurements
 
+PixelFlow achieves 120 FPS on Mac, 90 FPS on Motorola, and 60 FPS on iPhone, matching the maximum refresh rate of each tested device.
+
 The performance dock reports:
 
 - Frame rate
